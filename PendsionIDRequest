@@ -1,0 +1,346 @@
+/*************************************************************************
+* Global Class:  PendsionIDRequest
+* 
+* Purpose/Methods:
+* - Send the request and update the lead record based on the response.
+* 
+* Unit Test: TestPendsionIDRequest
+* 
+*************************************************************************/
+global class PendsionIDRequest{
+    
+    //Send the request and update the lead record based on the response.
+    webservice static String CreateNewCustomer(String StrLeadId) {
+        
+        PensionBee_API_Configuration__c objConfig = PensionBee_API_Configuration__c.getValues('Pension Bee API Configuration');
+        if(objConfig != null && !String.isblank(StrLeadId)){
+            String strJSONParameter = RetriveLead(StrLeadId);
+            String strJSON = strJSONParameter;
+            strJSON = strJSON .replace('"[','[');
+            strJSON = strJSON .replace(']"',']');   
+            strJSON = strJSON .replace('"{','{');
+            strJSON = strJSON .replace('}"','}');
+            
+            if(strJSON != '' && !strJSON.startsWith('Error:')){
+                HttpRequest req = new HttpRequest();
+                HttpResponse res = new HttpResponse();
+                Http http = new Http();
+                        
+                try {
+                    
+                    String StrEndPoint = String.valueof(objConfig.get('Create_New_Customer_End_Point__c'));
+                    String StrAPIKey = String.valueof(objConfig.get('API_Key__c'));
+                    if(!String.Isblank(StrEndPoint) && !String.Isblank(StrAPIKey )){
+                        
+                        String strFullEndPoint = StrEndPoint + '?api_key=' + StrAPIKey + '&access_token=f2jjajj22ja1324032j23jj4lfj';                        
+                        req.setEndpoint(strFullEndPoint );
+                        req.setMethod('POST');
+                        req.setHeader('Content-Type', 'application/json');  
+                        req.setBody(strJSON);
+                        req.setCompressed(true); // otherwise we hit a limit of 32000
+                        
+                        if(!Test.IsRunningTest()){
+                            res = http.send(req);
+                        }else{
+                            res.setHeader('Content-type', 'application/json');
+                            res.setBody('{"customer":{"pen_uid":"12345"}}');
+                            res.setStatusCode(200);
+                        }
+                        
+                        if(res.getStatusCode() == 200){
+                            JSONParser parser = JSON.createParser(res.getBody());
+                            string strMessage = '';
+                            while (parser.nextToken() != null) {
+                                if ((parser.getText() == 'pen_uid')) {
+                                    parser.nextToken();
+                                    strMessage = parser.getText();
+                                }
+                            }
+                            
+                            List<Lead> lstLead = [SELECT Id, LastName, FirstName, Salutation, MiddleName,Title,Name, Street, 
+                                City, State, PostalCode,  Country, DOB__c, Gender__c, National_Insurance_Number__c, Secret_Word__c, 
+                                KYC_Completed__c, Email, Phone, Pensionology_ID__c FROM Lead where id=:StrLeadId];
+                            if(lstLead != null && lstLead.size() > 0){
+                                lstLead[0].Pensionology_ID__c = Integer.ValueOf(strMessage);
+                            }
+                            update lstLead;
+                            
+                            InsertLogRecord(StrLeadId, 'Success', res.getBody());
+                            return 'success';
+                        }else{
+                            InsertLogRecord(StrLeadId, 'Fail', res.getBody());
+                            return res.tostring();
+                        }
+                    }
+                } 
+                catch ( Exception ex ) {   
+                    InsertLogRecord(StrLeadId, 'Fail', ex.getMessage());
+                }
+            }else{
+                if(strJSON.startsWith('Error:')){
+                    strJSON = strJSON.replace('Error: ','');
+                }
+                return strJSON;
+            }
+        } 
+        return '';
+    }
+    
+    //It will get the Lead Record and create a JSON  request and return the string.
+    Public static String RetriveLead(String StrLeadId){
+        //Get lead record
+        List<Lead> lstLead = [SELECT Id, LastName, FirstName, Salutation, MiddleName,Title,Name, Street, City, State, 
+                                PostalCode, Phone, Country, DOB__c, Gender__c, National_Insurance_Number__c, Secret_Word__c, 
+                                KYC_Completed__c, Email, Customer_Reference_Number__c, Total_Amount_in_Savings__c,                                 
+                                (Select id,name,Pension_Provider_App__c,Provider_reference__c,Current_value__c,
+                                Benefits_taken__c,In_Scope_Origo__c from Pensions__r), 
+                                (Select id,Name, Plan_Type__c from PensionBee_Pensions__r) FROM Lead where id=:StrLeadId];
+        //Get All Request Field Mapping
+        Map<String,String> MapCustomer = CustomerFieldMapping();
+        Map<String,String> MaptransferIn = transferInFieldMapping();
+        Map<String,String> MapPensionBee = PensionBeeFieldMapping();
+        
+        //Set the Some HardCode values for the some field
+        Set<String> transferHardcodeValueField = new Set<String>{'address','tAndCVersion','tAndCDate'};
+        Set<String> dateValueFields = new Set<String>{'dateOfBirth','dateOfKYC'};
+        //Create a JOSN String for the Request
+        JSONGenerator generator = JSON.createGenerator(true);  
+        
+        String strErrorMessage = CheckValidation(lstLead, MapCustomer, MaptransferIn, MapPensionBee);
+        
+        if(String.Isblank(strErrorMessage)){
+            for(Lead ObjLead : lstLead){
+            
+                //String For Customer 
+                generator.writeStartObject();
+                
+                JSONGenerator generatorCustomer = JSON.createGenerator(true);  
+                generatorCustomer.writeStartObject(); 
+                for(String strKey : MapCustomer.keyset()){
+                    String str= MapCustomer.get(strKey);
+                    String strValue = '';
+                    try{
+                        if(dateValueFields.contains(strKey)){
+                            Date dt = (Date)ObjLead.get(str);
+                            strValue = String.ValueOf(dt);
+                        }else{
+                            strValue = String.ValueOf(ObjLead.get(str));
+                        }
+                        if(!String.isblank(strValue)){
+                            generatorCustomer.writeStringField(strKey,strValue);
+                        }else{
+                            generatorCustomer.writeStringField(strKey ,'');
+                        }
+                    }catch(Exception ex){
+                        generatorCustomer.writeStringField(strKey ,'');
+                    }
+                }
+                generatorCustomer.writeEndObject();
+                generator.writeStringField('customer',generatorCustomer.getAsString().unescapeEcmaScript());
+                
+                
+                //String For Pension
+                JSONGenerator generatorchildPension = JSON.createGenerator(true);  
+                generatorchildPension.writeStartArray();
+                
+                if(ObjLead.Pensions__r.size() > 0){
+                    for(Pension__C objPension : ObjLead.Pensions__r){
+                        generatorchildPension.writeStartObject();     
+                        for(String strKey : MaptransferIn.keyset()){
+                            try{
+                                String str = MaptransferIn.get(strKey);
+                                String strValue = '';
+                                if(transferHardcodeValueField.contains(strKey)){
+                                    strValue = str;
+                                }else{
+                                    strValue = String.valueof(objPension.get(str));
+                                }
+                                
+                                if(!String.isblank(strValue)){
+                                     if(str == 'Current_value__c'){
+                                         generatorchildPension.writeNumberField(strKey,Double.valueof(strValue));
+                                     }else{
+                                         generatorchildPension.writeStringField(strKey,strValue);
+                                     }
+                                }else{
+                                    generatorchildPension.writeStringField(strKey ,'');
+                                }
+                            }catch(Exception ex){
+                                generatorchildPension.writeStringField(strKey ,'');
+                            }
+                        }
+                         generatorchildPension.writeEndObject();
+                    }
+                }else{
+                    generatorchildPension.writeStartObject();
+                    for(String strKey : MaptransferIn.keyset()){
+                        String str= MaptransferIn.get(strKey);
+                        generatorchildPension.writeStringField(strKey ,'');
+                    }
+                    generatorchildPension.writeEndObject();
+                }
+                generatorchildPension.writeEndArray();
+                generator.writeStringField('transfersIn',generatorchildPension.getAsString().unescapeEcmaScript());
+                
+                //String For Pension Bee
+                JSONGenerator generatorchildPensionBee = JSON.createGenerator(true);  
+                
+                
+                if(ObjLead.PensionBee_Pensions__r.size() > 0){
+                    for(PensionBee_Pension__c objPensionBee : ObjLead.PensionBee_Pensions__r){
+                        generatorchildPensionBee.writeStartObject();     
+                        for(String strKey : MapPensionBee.keyset()){
+                            String str= MapPensionBee.get(strKey);
+                            //String strValue = String.valueof(objPensionBee.get(str));
+                            try{
+                                if(String.valueof(objPensionBee.get(str)) != null && String.valueof(objPensionBee.get(str)) != ''){                        
+                                     generatorchildPensionBee.writeStringField(strKey ,String.valueof(objPensionBee.get(str)));
+                                }else{
+                                    generatorchildPensionBee.writeStringField(strKey ,'');
+                                }
+                            }catch(Exception ex){
+                                generatorchildPensionBee.writeStringField(strKey ,'');
+                            }                        
+                        }
+                        generatorchildPensionBee.writeEndObject();
+                        break;
+                    }
+                }else{
+                    generatorchildPensionBee.writeStartObject();
+                    for(String strKey : MapPensionBee.keyset()){
+                        String str= MaptransferIn.get(strKey);
+                        generatorchildPensionBee.writeStringField(strKey ,'');
+                    }
+                    generatorchildPensionBee.writeEndObject();
+                }
+                
+                generator.writeStringField('pensionBeePension',generatorchildPensionBee.getAsString().unescapeEcmaScript());
+                generator.writeEndObject();
+                
+            }
+            return generator.getAsString().unescapeEcmaScript();
+        }else{
+            return strErrorMessage;
+        }
+            
+    }
+    
+    // It will check validation of require fields when generating JOSN string for the request and return error message in string.
+    Public Static String CheckValidation(List<Lead> lstLead, Map<String,String> MapCustomer, Map<String,String> MaptransferIn, Map<String,String> MapPensionBee){
+        String strErrorMessage ='';
+        for(Lead ObjLead : lstLead){
+            for(String strKey : MapCustomer.keyset()){
+                String str= MapCustomer.get(strKey);
+                if(str == 'DOB__c'){
+                    String strDOB = String.ValueOf(ObjLead.get(str));
+                    if(String.IsBlank(strDOB)){
+                        strErrorMessage = 'Error: Require field missing: DOB';
+                    }
+                }
+                if(str == 'KYC_Completed__c'){
+                    String strKYC = String.ValueOf(ObjLead.get(str));
+                    if(String.IsBlank(strKYC)){
+                        if(String.IsBlank(strErrorMessage)){
+                            strErrorMessage = 'Error: Require field missing: KYC Completed';
+                        }else{
+                            strErrorMessage += ', KYC Completed';
+                        }
+                    }
+                }
+            }
+            
+            if(ObjLead.Pensions__r.size() > 0){
+                for(Pension__C objPension : ObjLead.Pensions__r){
+                    for(String strKey : MaptransferIn.keyset()){
+                        String str = MaptransferIn.get(strKey);
+                        if(str == 'Current_value__c'){
+                            String strCurValue = String.ValueOf(objPension.get(str));
+                            if(String.IsBlank(strCurValue)){
+                                if(String.IsBlank(strErrorMessage)){
+                                    strErrorMessage = 'Error: Require field missing: Current value';
+                                }else{
+                                    strErrorMessage += ', Current value';
+                                }
+                            }
+                        }
+                        if(str == 'Benefits_taken__c'){
+                            String strBenTaken = String.ValueOf(objPension.get(str));
+                            if(String.IsBlank(strBenTaken)){
+                                if(String.IsBlank(strErrorMessage)){
+                                    strErrorMessage = 'Error: Require field missing: Benefits taken';
+                                }else{
+                                    strErrorMessage += ', Benefits taken';
+                                }
+                            }
+                        }
+                    }
+                }    
+            }else{
+                if(String.IsBlank(strErrorMessage)){
+                    strErrorMessage = 'Error: Please create pension record.';
+                }    
+            }
+        }
+        return strErrorMessage;
+    }
+    
+    // Create new log record for response.
+    Public Static Void InsertLogRecord(String strLeadId, String strStatus, String strResponse){
+        Log__c objLog = new Log__c();
+        objLog.Lead__c = strLeadId;
+        objLog.Status__c = strStatus;
+        objLog.Response__c = strResponse;
+        insert objLog;
+    }
+    
+    //Create a map for Field mapping of Lead
+    Public Static Map<String,String> CustomerFieldMapping(){
+        Map<String,String> MapCustomer = new Map<String,String>();
+        MapCustomer.put('firstName','FirstName'); 
+        MapCustomer.put('middleName','MiddleName'); 
+        MapCustomer.put('surname','LastName'); 
+        MapCustomer.put('title','Title'); 
+        MapCustomer.put('houseNameNumber','Street'); 
+        MapCustomer.put('street','Street');
+        MapCustomer.put('town','City');
+        MapCustomer.put('locality','City');
+        MapCustomer.put('county','Country');
+        MapCustomer.put('postcode','PostalCode');
+        MapCustomer.put('gender','Gender__c');
+        MapCustomer.put('dateOfBirth','DOB__c');
+        MapCustomer.put('niNumber','National_Insurance_Number__c');
+        MapCustomer.put('password','Secret_Word__c');
+        MapCustomer.put('dateOfKYC','KYC_Completed__c');
+        MapCustomer.put('email','Email');    
+        MapCustomer.put('homePhone','Phone');
+        MapCustomer.put('customerReferenceNumber','Customer_Reference_Number__c');
+        MapCustomer.put('totalAmountInSavings','Total_Amount_in_Savings__c');
+        return MapCustomer;
+    }
+    
+    //Create a map for Field mapping of transfer
+    Public Static Map<String,String> transferInFieldMapping(){
+        Map<String,String> MaptransferIn = new Map<String,String>();
+        MaptransferIn.put('providerName','Pension_Provider_App__c'); 
+        MaptransferIn.put('reference','Provider_reference__c'); 
+        MaptransferIn.put('fundAmount','Current_value__c'); 
+        MaptransferIn.put('address','123 Main Street, TestTown'); 
+        MaptransferIn.put('benefitsTaken','Benefits_taken__c'); 
+        MaptransferIn.put('tAndCVersion','0.1');
+
+        //HardCode Value of date and Version
+        Datetime yourDate = Datetime.now();
+        String dateOutput = yourDate.format('yyyy-MM-dd');
+
+        MaptransferIn.put('tAndCDate',dateOutput);
+        MaptransferIn.put('inScopeOrigo','In_Scope_Origo__c');
+        return MaptransferIn;
+    }
+    
+    //Create a map for Field mapping of Pension Bee
+    Public Static Map<String,String> PensionBeeFieldMapping(){
+        Map<String,String> MapPensionBee = new Map<String,String>();
+        MapPensionBee.put('productName','Plan_Type__c');
+        return MapPensionBee;
+    }
+}
