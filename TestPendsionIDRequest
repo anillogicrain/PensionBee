@@ -1,0 +1,128 @@
+/* *************************************************************************
+* Test Class: TestPendsionIDRequest TestClass
+* dateCreated : 10/23/2015
+*
+* Purpose/Methods:
+* - Code coverage Test class of the PendsionIDRequest class
+*
+************************************************************************* */
+@isTest 
+public class TestPendsionIDRequest{
+    static testMethod void TestPendsionIDRequest(){
+        PensionBee_API_Configuration__c objPensionAPIConfig = new PensionBee_API_Configuration__c();
+        objPensionAPIConfig.Name = 'Pension Bee API Configuration';
+        objPensionAPIConfig.API_Key__c = 'testingapikey';
+        objPensionAPIConfig.Create_New_Customer_End_Point__c = 'https://pb-puk-api-proxy.herokuapp.com/createNewCustomer';
+        insert objPensionAPIConfig;
+        
+        Lead objLead = new Lead();
+        objLead.Salutation = 'Mr.';
+        objLead.LastName = 'LName';
+        objLead.FirstName = 'FName';
+        objLead.MiddleName = 'M';
+        objLead.Street = '123, test';
+        objLead.City = 'Test City';
+        objLead.PostalCode = 'SE1 1JA';
+        objLead.Country = 'United States';
+        objLead.State = 'Florida';
+        objLead.Phone = '888888888';
+        objLead.Title = 'Test';
+        objLead.Email = 'test@test.com';
+        objLead.DOB__c = System.Today();
+        objLead.Gender__c = 'Male';
+        objLead.National_Insurance_Number__c = 'AAAAAAAAA';
+        objLead.Secret_Word__c = 'Test';
+        objLead.KYC_Completed__c = System.Today();
+        objLead.Total_Amount_in_Savings__c = 5000;
+        insert objLead;
+        
+        Pension__c objPension = new Pension__c();
+        objPension.Lead__c = objLead.Id;
+        objPension.Pension_Provider_App__c = 'Test Provider';
+        objPension.Provider_reference__c = 'Test Ref';
+        objPension.Current_value__c = 250;
+        objPension.Benefits_taken__c = 'no';
+        objPension.In_Scope_Origo__c = 'yes';
+        insert objPension;
+        
+        PensionBee_Pension__c objPensionBee = new PensionBee_Pension__c();
+        objPensionBee.Lead__c = objLead.Id;
+        objPensionBee.Plan_Type__c = 'Simple';
+        insert objPensionBee;
+        
+        PendsionIDRequest.CreateNewCustomer(objLead.Id);
+    }
+    
+    static testMethod void TestPendsionIDRequest1(){
+        PensionBee_API_Configuration__c objPensionAPIConfig = new PensionBee_API_Configuration__c();
+        objPensionAPIConfig.Name = 'Pension Bee API Configuration';
+        objPensionAPIConfig.API_Key__c = 'testingapikey';
+        objPensionAPIConfig.Create_New_Customer_End_Point__c = 'https://pb-puk-api-proxy.herokuapp.com/createNewCustomer';
+        insert objPensionAPIConfig;
+        
+        Lead objLead = new Lead();
+        objLead.Salutation = 'Mr.';
+        objLead.LastName = 'LName';
+        objLead.FirstName = 'FName';
+        objLead.MiddleName = 'M';
+        objLead.Street = '123, test';
+        objLead.City = 'Test City';
+        objLead.PostalCode = 'SE1 1JA';
+        objLead.Country = 'United States';
+        objLead.State = 'Florida';
+        objLead.Phone = '888888888';
+        objLead.Title = 'Test';
+        objLead.Email = 'test@test.com';
+        objLead.DOB__c = System.Today();
+        objLead.Gender__c = 'Male';
+        objLead.National_Insurance_Number__c = 'AAAAAAAAA';
+        objLead.Secret_Word__c = 'Test';
+        objLead.KYC_Completed__c = System.Today();
+        objLead.Total_Amount_in_Savings__c = 5000;
+        insert objLead;
+        
+        Pension__c objPension = new Pension__c();
+        objPension.Lead__c = objLead.Id;
+        insert objPension;
+        
+        PendsionIDRequest.CreateNewCustomer(objLead.Id);
+    }
+    
+    static testMethod void TestPendsionIDRequest2(){
+        PensionBee_API_Configuration__c objPensionAPIConfig = new PensionBee_API_Configuration__c();
+        objPensionAPIConfig.Name = 'Pension Bee API Configuration';
+        objPensionAPIConfig.API_Key__c = 'testingapikey';
+        objPensionAPIConfig.Create_New_Customer_End_Point__c = 'https://pb-puk-api-proxy.herokuapp.com/createNewCustomer';
+        insert objPensionAPIConfig;
+        
+        Lead objLead = new Lead();
+        objLead.Salutation = 'Mr.';
+        objLead.LastName = 'LName';
+        objLead.FirstName = 'FName';
+        objLead.MiddleName = 'M';
+        objLead.PostalCode = 'SE1 1JA';
+        objLead.Phone = '888888888';
+        objLead.Email = 'test@test.com';
+        objLead.Gender__c = 'Male';
+        objLead.National_Insurance_Number__c = 'AAAAAAAAA';
+        objLead.Secret_Word__c = 'Test';
+        objLead.Total_Amount_in_Savings__c = 5000;
+        insert objLead;
+        
+        Pension__c objPension = new Pension__c();
+        objPension.Lead__c = objLead.Id;
+        objPension.Pension_Provider_App__c = 'Test Provider';
+        objPension.Provider_reference__c = 'Test Ref';
+        objPension.Current_value__c = 250;
+        objPension.Benefits_taken__c = 'no';
+        objPension.In_Scope_Origo__c = 'yes';
+        insert objPension;
+        
+        PensionBee_Pension__c objPensionBee = new PensionBee_Pension__c();
+        objPensionBee.Lead__c = objLead.Id;
+        objPensionBee.Plan_Type__c = 'Simple';
+        insert objPensionBee;
+        
+        PendsionIDRequest.CreateNewCustomer(objLead.Id);
+    }
+}
